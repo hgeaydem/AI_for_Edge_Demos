@@ -1,0 +1,82 @@
+# Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+
+ARG BASE_IMAGE=quay.io/hgeaydem/l4t-ml:latest
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+#
+# install prerequisites (many of these are for numpy)
+#
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+            python3-pip \
+		  python3-dev \
+		  libopenblas-dev \
+		  libopenmpi-dev \
+            openmpi-bin \
+            openmpi-common \
+		  gfortran \
+		  libomp-dev \
+            curl \
+            wget \
+            git \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+#
+# Miniconda3
+#
+WORKDIR /opt
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-aarch64.sh -O ~/miniconda.sh && \
+    /bin/bash ~/miniconda.sh -b -p /opt/conda && \
+    rm ~/miniconda.sh && \
+    /opt/conda/bin/conda clean -tipy && \
+    ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
+    echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
+    echo "conda activate base" >> ~/.bashrc && \
+    . ~/.bashrc && \
+    wget --quiet --show-progress --progress=bar:force:noscroll --no-check-certificate https://nvidia.box.com/shared/static/rehpfc4dwsxuhpv4jgqv8u6rzpgb64bq.whl -O torch-2.0.0a0+ec3941ad.nv23.2-cp38-cp38-linux_aarch64.whl && \
+    pip3 install --no-cache-dir --verbose torch-2.0.0a0+ec3941ad.nv23.2-cp38-cp38-linux_aarch64.whl && \
+    rm torch-2.0.0a0+ec3941ad.nv23.2-cp38-cp38-linux_aarch64.whl && \
+    pip3 install setuptools &&\
+    git clone https://github.com/oobabooga/text-generation-webui &&\
+    cd text-generation-webui &&\
+    pip install -r requirements.txt
+#    mkdir repositories &&\
+#    cd repositories &&\
+#    git clone https://github.com/qwopqwop200/GPTQ-for-LLaMa &&\
+#    cd GPTQ-for-LLaMa &&\
+#    pip install -r requirements.txt &&\
+#    python setup_cuda.py install
+    
+COPY alpaca-7b/added_tokens.json alpaca-7b/pytorch_model.bin.index.json alpaca-7b/config.json alpaca-7b/special_tokens_map.json alpaca-7b/tokenizer.model alpaca-7b/tokenizer_config.json /opt/text-generation-webui/models/alpaca-7b/
+COPY alpaca-7b/pytorch_model-00001-of-00003.bin /opt/text-generation-webui/models/alpaca-7b/
+COPY alpaca-7b/pytorch_model-00002-of-00003.bin /opt/text-generation-webui/models/alpaca-7b/
+COPY alpaca-7b/pytorch_model-00003-of-00003.bin /opt/text-generation-webui/models/alpaca-7b/
+
+ENV PATH="/opt/conda/bin:${PATH}"
+ARG PATH="/opt/conda/bin:${PATH}"
+WORKDIR /opt/text-generation-webui
+SHELL ["conda", "run", "-n", "base", "/usr/bin/bash", "-c"]
+ENTRYPOINT ["conda", "run", "-n", "base", "python3", "server.py", "--listen"]
+#ENTRYPOINT [ "/usr/bin/bash", "-l", "-c" ]
+#CMD ["source /root/.bashrc && python server.py --listen"] 
